@@ -1,12 +1,10 @@
 import ClassList from '@/components/class-list';
-import { getClasses, getUsers, getEnrollments } from '@/lib/data';
+import { getClasses } from '@/lib/data';
 import { Music2 } from 'lucide-react';
 
 export default async function Home() {
   // Fetching data on the server to provide as initial data to the client component
   const initialClasses = await getClasses();
-  const allUsers = await getUsers();
-  const initialEnrollments = await getEnrollments();
 
   return (
     <>
@@ -25,7 +23,7 @@ export default async function Home() {
           </div>
         </div>
       </section>
-      <ClassList initialClasses={initialClasses} allUsers={allUsers} initialEnrollments={initialEnrollments} />
+      <ClassList initialClasses={initialClasses} />
     </>
   );
 }

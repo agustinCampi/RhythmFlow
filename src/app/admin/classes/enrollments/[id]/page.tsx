@@ -1,4 +1,4 @@
-import { getClassById, getEnrollmentsForClass, getUsers } from "@/lib/data";
+import { getClassById, getEnrollmentsForClass, getUsersByIds } from "@/lib/data";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
@@ -10,8 +10,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { ChevronLeft, UserCircle } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import type { User } from "@/types";
 
 interface EnrollmentsPageProps {
   params: {
@@ -26,11 +27,10 @@ export default async function EnrollmentsPage({ params }: EnrollmentsPageProps) 
   }
 
   const enrollments = await getEnrollmentsForClass(params.id);
-  const allUsers = await getUsers();
+  const studentIds = enrollments.map(e => e.studentId);
+  const enrolledStudents: User[] = await getUsersByIds(studentIds);
 
-  const enrolledStudents = enrollments.map(enrollment => 
-    allUsers.find(user => user.id === enrollment.studentId)
-  ).filter(user => user !== undefined);
+  const studentMap = new Map(enrolledStudents.map(s => [s.id, s]));
 
   const getInitials = (name: string) => {
     const names = name.split(' ');
@@ -50,11 +50,11 @@ export default async function EnrollmentsPage({ params }: EnrollmentsPageProps) 
         <CardHeader>
           <CardTitle>Enrollments for "{danceClass.title}"</CardTitle>
           <CardDescription>
-            {enrolledStudents.length} of {danceClass.capacity} spots filled.
+            {enrollments.length} of {danceClass.capacity} spots filled.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {enrolledStudents.length > 0 ? (
+          {enrollments.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -65,19 +65,21 @@ export default async function EnrollmentsPage({ params }: EnrollmentsPageProps) 
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {enrolledStudents.map((student) => {
-                  const enrollment = enrollments.find(e => e.studentId === student!.id);
+                {enrollments.map((enrollment) => {
+                  const student = studentMap.get(enrollment.studentId);
+                  if (!student) return null;
+
                   return (
-                    <TableRow key={student!.id}>
+                    <TableRow key={enrollment.id}>
                       <TableCell>
                         <Avatar>
-                          <AvatarImage src={`https://i.pravatar.cc/150?u=${student!.id}`} />
-                          <AvatarFallback>{getInitials(student!.fullName)}</AvatarFallback>
+                          <AvatarImage src={`https://i.pravatar.cc/150?u=${student.id}`} />
+                          <AvatarFallback>{getInitials(student.fullName)}</AvatarFallback>
                         </Avatar>
                       </TableCell>
-                      <TableCell className="font-medium">{student!.fullName}</TableCell>
-                      <TableCell>{student!.email}</TableCell>
-                      <TableCell>{enrollment?.enrollmentDate.toLocaleDateString()}</TableCell>
+                      <TableCell className="font-medium">{student.fullName}</TableCell>
+                      <TableCell>{student.email}</TableCell>
+                      <TableCell>{enrollment.enrollmentDate.toLocaleDateString()}</TableCell>
                     </TableRow>
                   );
                 })}
