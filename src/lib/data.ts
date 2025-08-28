@@ -1,116 +1,153 @@
-import type { DanceClass, Enrollment, User } from '@/types';
+import { db } from '@/lib/firebase';
+import type { DanceClass, Enrollment } from '@/types';
+import {
+  collection,
+  getDocs,
+  getDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  query,
+  where,
+  orderBy,
+  Timestamp,
+  writeBatch,
+  documentId
+} from 'firebase/firestore';
 
-// Mock Data
-let users: User[] = [
-  { id: '1', fullName: 'Alice Johnson', email: 'alice@example.com', role: 'student' },
-  { id: '2', fullName: 'Bob Williams', email: 'bob@example.com', role: 'student' },
-  { id: '3', fullName: 'Charlie Brown', email: 'charlie@example.com', role: 'admin' },
-  { id: '4', fullName: 'Diana Prince', email: 'diana@example.com', role: 'student' },
-];
-
-let classes: DanceClass[] = [
-  { id: 'c1', title: 'Hip Hop Fundamentals', level: 'Beginner', teacher: 'Mike Ross', startTime: new Date('2024-08-10T18:00:00'), endTime: new Date('2024-08-10T19:00:00'), capacity: 20 },
-  { id: 'c2', title: 'Contemporary Flow', level: 'Intermediate', teacher: 'Jessica Pearson', startTime: new Date('2024-08-10T19:00:00'), endTime: new Date('2024-08-10T20:30:00'), capacity: 15 },
-  { id: 'c3', title: 'Advanced Ballet Techniques', level: 'Advanced', teacher: 'Louis Litt', startTime: new Date('2024-08-11T17:00:00'), endTime: new Date('2024-08-11T18:30:00'), capacity: 10 },
-  { id: 'c4', title: 'Salsa for Beginners', level: 'Beginner', teacher: 'Donna Paulsen', startTime: new Date('2024-08-11T20:00:00'), endTime: new Date('2024-08-11T21:00:00'), capacity: 25 },
-  { id: 'c5', title: 'Jazz Fusion', level: 'Intermediate', teacher: 'Harvey Specter', startTime: new Date('2024-08-12T18:00:00'), endTime: new Date('2024-08-12T19:30:00'), capacity: 18 },
-  { id: 'c6', title: 'Pro-level Locking & Popping', level: 'Advanced', teacher: 'Katrina Bennett', startTime: new Date('2024-08-12T20:00:00'), endTime: new Date('2024-08-12T21:30:00'), capacity: 12 },
-];
-
-let enrollments: Enrollment[] = [
-  { id: 'e1', studentId: '1', classId: 'c2', enrollmentDate: new Date() },
-  { id: 'e2', studentId: '2', classId: 'c2', enrollmentDate: new Date() },
-  { id: 'e3', studentId: '1', classId: 'c4', enrollmentDate: new Date() },
-];
-
-// Mock API functions
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
-export const getUsers = async (): Promise<User[]> => {
-  await delay(100);
-  return users;
+// Helper to convert Firestore timestamp to Date
+const fromFirestore = (doc: any): any => {
+  const data = doc.data();
+  return {
+    ...data,
+    id: doc.id,
+    startTime: data.startTime instanceof Timestamp ? data.startTime.toDate() : data.startTime,
+    endTime: data.endTime instanceof Timestamp ? data.endTime.toDate() : data.endTime,
+    enrollmentDate: data.enrollmentDate instanceof Timestamp ? data.enrollmentDate.toDate() : data.enrollmentDate,
+  };
 };
 
 export const getClasses = async (): Promise<DanceClass[]> => {
-  await delay(100);
-  return classes.filter(c => c.startTime > new Date()).sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+  const classesRef = collection(db, 'classes');
+  // Query to get upcoming classes, ordered by start time
+  const q = query(classesRef, where('startTime', '>', new Date()), orderBy('startTime'));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => fromFirestore(doc) as DanceClass);
 };
 
 export const getClassById = async (id: string): Promise<DanceClass | undefined> => {
-    await delay(100);
-    return classes.find(c => c.id === id);
-}
-
-export const getEnrollments = async (): Promise<Enrollment[]> => {
-    await delay(100);
-    return enrollments;
-}
-
-export const getEnrollmentsForClass = async (classId: string): Promise<Enrollment[]> => {
-  await delay(100);
-  return enrollments.filter(e => e.classId === classId);
+  const classDocRef = doc(db, 'classes', id);
+  const docSnap = await getDoc(classDocRef);
+  if (docSnap.exists()) {
+    return fromFirestore(docSnap) as DanceClass;
+  }
+  return undefined;
 };
 
-export const getEnrollmentsForUser = async (userId: string): Promise<Enrollment[]> => {
-    await delay(100);
-    return enrollments.filter(e => e.studentId === userId);
-}
+export const getAllEnrollments = async (): Promise<Enrollment[]> => {
+  const enrollmentsRef = collection(db, 'enrollments');
+  const querySnapshot = await getDocs(enrollmentsRef);
+  return querySnapshot.docs.map(doc => fromFirestore(doc) as Enrollment);
+};
 
-export const addEnrollment = async (studentId: string, classId: string): Promise<Enrollment> => {
-    await delay(200);
-    if (enrollments.some(e => e.studentId === studentId && e.classId === classId)) {
-        throw new Error("Already enrolled");
-    }
-    const newEnrollment: Enrollment = {
-        id: `e${Date.now()}`,
-        studentId,
-        classId,
-        enrollmentDate: new Date(),
-    };
-    enrollments.push(newEnrollment);
-    return newEnrollment;
-}
-
-export const cancelEnrollment = async (enrollmentId: string): Promise<void> => {
-    await delay(200);
-    const index = enrollments.findIndex(e => e.id === enrollmentId);
-    if (index > -1) {
-        enrollments.splice(index, 1);
-    } else {
-        throw new Error("Enrollment not found");
-    }
+export const getUsersByIds = async (ids: string[]): Promise<User[]> => {
+  if (ids.length === 0) {
+    return [];
+  }
+  const usersRef = collection(db, 'users');
+  const q = query(usersRef, where(documentId(), 'in', ids));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
 }
 
 export const addClass = async (newClassData: Omit<DanceClass, 'id'>): Promise<DanceClass> => {
-    await delay(200);
-    const newClass: DanceClass = {
-        id: `c${Date.now()}`,
-        ...newClassData,
-    };
-    classes.push(newClass);
-    return newClass;
-}
+  const classesRef = collection(db, 'classes');
+  const docRef = await addDoc(classesRef, {
+    ...newClassData,
+    startTime: Timestamp.fromDate(newClassData.startTime),
+    endTime: Timestamp.fromDate(newClassData.endTime),
+  });
+  return { id: docRef.id, ...newClassData };
+};
 
-export const updateClass = async (classId: string, updates: Partial<DanceClass>): Promise<DanceClass> => {
-    await delay(200);
-    const classIndex = classes.findIndex(c => c.id === classId);
-    if (classIndex === -1) {
-        throw new Error("Class not found");
-    }
-    classes[classIndex] = { ...classes[classIndex], ...updates };
-    // Placeholder for sending notifications to enrolled students
-    console.log(`Class ${classId} updated. Triggering notifications for enrolled students.`);
-    return classes[classIndex];
-}
+export const updateClass = async (classId: string, updates: Partial<Omit<DanceClass, 'id'>>): Promise<DanceClass> => {
+  const classDocRef = doc(db, 'classes', classId);
+
+  // Convert Date objects to Timestamps for Firestore
+  const firestoreUpdates: { [key: string]: any } = { ...updates };
+  if (updates.startTime) {
+    firestoreUpdates.startTime = Timestamp.fromDate(updates.startTime);
+  }
+  if (updates.endTime) {
+    firestoreUpdates.endTime = Timestamp.fromDate(updates.endTime);
+  }
+
+  await updateDoc(classDocRef, firestoreUpdates);
+  const updatedDoc = await getClassById(classId);
+  if (!updatedDoc) {
+    throw new Error("Failed to fetch updated class");
+  }
+  return updatedDoc;
+};
 
 export const deleteClass = async (classId: string): Promise<void> => {
-    await delay(200);
-    const index = classes.findIndex(c => c.id === classId);
-    if (index > -1) {
-        classes.splice(index, 1);
-        // Also remove associated enrollments
-        enrollments = enrollments.filter(e => e.classId !== classId);
-    } else {
-        throw new Error("Class not found");
-    }
-}
+  const classDocRef = doc(db, 'classes', classId);
+
+  // Also delete associated enrollments in a batch write
+  const enrollmentsRef = collection(db, 'enrollments');
+  const q = query(enrollmentsRef, where('classId', '==', classId));
+  const enrollmentsSnapshot = await getDocs(q);
+
+  const batch = writeBatch(db);
+  enrollmentsSnapshot.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+
+  batch.delete(classDocRef);
+
+  await batch.commit();
+};
+
+export const getEnrollmentsForClass = async (classId: string): Promise<Enrollment[]> => {
+  const enrollmentsRef = collection(db, 'enrollments');
+  const q = query(enrollmentsRef, where('classId', '==', classId));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => fromFirestore(doc) as Enrollment);
+};
+
+export const getEnrollmentsForUser = async (userId: string): Promise<Enrollment[]> => {
+  const enrollmentsRef = collection(db, 'enrollments');
+  const q = query(enrollmentsRef, where('studentId', '==', userId));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => fromFirestore(doc) as Enrollment);
+};
+
+export const addEnrollment = async (studentId: string, classId: string): Promise<Enrollment> => {
+  // Check for existing enrollment first
+  const enrollmentsRef = collection(db, 'enrollments');
+  const q = query(enrollmentsRef, where('studentId', '==', studentId), where('classId', '==', classId));
+  const existingEnrollment = await getDocs(q);
+  if (!existingEnrollment.empty) {
+    throw new Error("Already enrolled in this class");
+  }
+
+  const newEnrollmentData = {
+    studentId,
+    classId,
+    enrollmentDate: Timestamp.now(),
+  };
+  const docRef = await addDoc(enrollmentsRef, newEnrollmentData);
+
+  return {
+    id: docRef.id,
+    studentId,
+    classId,
+    enrollmentDate: (newEnrollmentData.enrollmentDate as Timestamp).toDate(),
+  };
+};
+
+export const cancelEnrollment = async (enrollmentId: string): Promise<void> => {
+  const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
+  await deleteDoc(enrollmentDocRef);
+};

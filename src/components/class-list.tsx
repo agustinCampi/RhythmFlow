@@ -3,25 +3,34 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DanceClass, User, Enrollment } from '@/types';
+import { DanceClass, Enrollment } from '@/types';
 import ClassCard from './class-card';
 import { Search } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
-import { getEnrollmentsForUser } from '@/lib/data';
+import { getEnrollmentsForUser, getAllEnrollments } from '@/lib/data';
 
 interface ClassListProps {
   initialClasses: DanceClass[];
-  allUsers: User[];
-  initialEnrollments: Enrollment[];
 }
 
-export default function ClassList({ initialClasses, allUsers, initialEnrollments }: ClassListProps) {
+export default function ClassList({ initialClasses }: ClassListProps) {
   const { user } = useAuth();
   const [levelFilter, setLevelFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [userEnrollments, setUserEnrollments] = useState<Enrollment[]>([]);
+  const [allEnrollments, setAllEnrollments] = useState<Enrollment[]>([]);
 
   useEffect(() => {
+    // Fetch all enrollments to calculate counts
+    async function fetchAllEnrollments() {
+      const enrollments = await getAllEnrollments();
+      setAllEnrollments(enrollments);
+    }
+    fetchAllEnrollments();
+  }, []);
+
+  useEffect(() => {
+    // Fetch enrollments specific to the logged-in user
     async function fetchUserEnrollments() {
       if (user) {
         const enrollments = await getEnrollmentsForUser(user.id);
@@ -34,11 +43,11 @@ export default function ClassList({ initialClasses, allUsers, initialEnrollments
   }, [user]);
 
   const enrollmentsByClass = useMemo(() => {
-    return initialEnrollments.reduce((acc, enrollment) => {
+    return allEnrollments.reduce((acc, enrollment) => {
       acc[enrollment.classId] = (acc[enrollment.classId] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-  }, [initialEnrollments]);
+  }, [allEnrollments]);
   
   const filteredClasses = useMemo(() => {
     return initialClasses.filter((danceClass) => {
@@ -86,6 +95,9 @@ export default function ClassList({ initialClasses, allUsers, initialEnrollments
                 danceClass={danceClass}
                 enrollmentCount={enrollmentsByClass[danceClass.id] || 0}
                 isInitiallyEnrolled={isEnrolled}
+                // We need a way to update the enrollments in the UI after a change
+                // This is a more complex state management problem. For now, a page refresh would be needed
+                // A better solution would involve a shared state/context for enrollments
               />
             );
           })}

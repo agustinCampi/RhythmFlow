@@ -15,13 +15,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { getClasses, getEnrollments } from "@/lib/data";
+import { getClasses, getAllEnrollments } from "@/lib/data";
 import { MoreHorizontal, PlusCircle, Edit, Trash2, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export default async function AdminDashboard() {
   const classes = await getClasses();
-  const allEnrollments = await getEnrollments();
+  const allEnrollments = await getAllEnrollments();
 
   const enrollmentCounts = allEnrollments.reduce((acc, enrollment) => {
     acc[enrollment.classId] = (acc[enrollment.classId] || 0) + 1;
